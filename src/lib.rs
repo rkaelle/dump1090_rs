@@ -1,44 +1,44 @@
 /*
-This crate is meant to be a direct C-to-Rust translation of the algorithms in the popular dump1090 program.
-It was developed by referencing the version found at https://github.com/adsbxchange/dump1090-mutability
-It matches bit-for-bit in almost every case, but there may be some edge cases where handling of rounding, non-deterministic
-timing, and things like that might give results that are not quite identical.
+This crate is a Rust implementation of dump978 UAT decoder.
+It was developed to handle 978 MHz Universal Access Transceiver (UAT) ADS-B messages
+based on the dump978 specifications and UAT protocol documentation.
 */
 
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
 // public
-pub mod demod_2400;
+pub mod demod_978;
 
 // public(crate)
 pub mod utils;
 
 // private
-mod crc;
-pub mod icao_filter;
-mod mode_s;
+mod fec;
+pub mod uat_decode;
+pub mod uat_message;
 
-pub const MODES_MAG_BUF_SAMPLES: usize = 131_072;
+pub const UAT_MAG_BUF_SAMPLES: usize = 104_858; // Adjusted for 978 MHz sample rate
+pub const UAT_SAMPLE_RATE: f64 = 2_083_334.0; // UAT sample rate
 
 const TRAILING_SAMPLES: usize = 326;
-pub const MODES_LONG_MSG_BYTES: usize = 14;
-pub const MODES_SHORT_MSG_BYTES: usize = 7;
+pub const UAT_LONG_MSG_BYTES: usize = 34; // UAT long message size
+pub const UAT_SHORT_MSG_BYTES: usize = 18; // UAT short message size
 
-// dump1090.h:252
+// UAT magnitude buffer structure
 #[derive(Copy, Clone, Debug)]
 pub struct MagnitudeBuffer {
-    pub data: [u16; TRAILING_SAMPLES + MODES_MAG_BUF_SAMPLES],
+    pub data: [u16; TRAILING_SAMPLES + UAT_MAG_BUF_SAMPLES],
     pub length: usize,
-    pub first_sample_timestamp_12mhz: usize,
+    pub first_sample_timestamp: usize,
 }
 
 impl Default for MagnitudeBuffer {
     fn default() -> Self {
         Self {
-            data: [0_u16; TRAILING_SAMPLES + MODES_MAG_BUF_SAMPLES],
+            data: [0_u16; TRAILING_SAMPLES + UAT_MAG_BUF_SAMPLES],
             length: 0,
-            first_sample_timestamp_12mhz: 0,
+            first_sample_timestamp: 0,
         }
     }
 }
@@ -47,5 +47,33 @@ impl MagnitudeBuffer {
     pub fn push(&mut self, x: u16) {
         self.data[TRAILING_SAMPLES + self.length] = x;
         self.length += 1;
+    }
+}
+
+// UAT frame structure
+#[derive(Debug, Clone)]
+pub struct UatFrame {
+    pub raw_data: Vec<u8>,
+    pub frame_type: UatFrameType,
+    pub payload: Vec<u8>,
+    pub rs_corrected: bool,
+    pub signal_level: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UatFrameType {
+    Downlink,
+    Uplink,
+}
+
+impl UatFrame {
+    pub fn new(raw_data: Vec<u8>, frame_type: UatFrameType, payload: Vec<u8>) -> Self {
+        Self {
+            raw_data,
+            frame_type,
+            payload,
+            rs_corrected: false,
+            signal_level: 0.0,
+        }
     }
 }

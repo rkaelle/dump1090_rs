@@ -4,8 +4,9 @@ use std::io::Write;
 use std::net::{IpAddr, TcpListener};
 
 use clap::Parser;
-use libdump1090_rs::demod_2400::demodulate2400;
-use libdump1090_rs::utils;
+use libdump978_rs::demod_978::demodulate978;
+use libdump978_rs::uat_decode::decode_uat_frames;
+use libdump978_rs::utils;
 use num_complex::Complex;
 use sdrconfig::{SdrConfig, DEFAULT_CONFIG};
 use soapysdr::Direction;
@@ -33,9 +34,9 @@ value = 20.0
 #[derive(Debug, Parser)]
 #[clap(
     version,
-    name = "dump1090_rs",
+    name = "dump978_rs",
     author = "wcampbell0x2a",
-    about = "ADS-B Demodulator and Server"
+    about = "UAT 978 MHz ADS-B Demodulator and Server"
 )]
 struct Options {
     /// ip address to bind with for client connections
@@ -43,7 +44,7 @@ struct Options {
     host: IpAddr,
 
     /// port to bind with for client connections
-    #[clap(long, default_value = "30002")]
+    #[clap(long, default_value = "30978")]
     port: u16,
 
     /// soapysdr driver name (sdr device) from default `config.toml` or `--custom-config`
@@ -64,6 +65,14 @@ struct Options {
     /// don't display hex output of messages
     #[clap(long)]
     quiet: bool,
+
+    /// enable Reed-Solomon error correction
+    #[clap(long)]
+    enable_fec: bool,
+
+    /// show detailed UAT message information
+    #[clap(long)]
+    verbose: bool,
 }
 
 // main will exit as 0 for success, 1 on error
@@ -129,11 +138,12 @@ fn main() {
             d.set_antenna(DIRECTION, channel, antenna.name.clone()).unwrap();
         }
 
-        // now we set defaults
-        d.set_frequency(DIRECTION, channel, 1_090_000_000.0, ()).unwrap();
+        // Set frequency to 978 MHz for UAT
+        d.set_frequency(DIRECTION, channel, 978_000_000.0, ()).unwrap();
         println!("[-] frequency: {:?}", d.frequency(DIRECTION, channel));
 
-        d.set_sample_rate(DIRECTION, channel, 2_400_000.0).unwrap();
+        // Set sample rate to 2.083334 MHz for UAT
+        d.set_sample_rate(DIRECTION, channel, 2_083_334.0).unwrap();
         println!("[-] sample rate: {:?}", d.sample_rate(DIRECTION, 0));
         channel
     } else {
@@ -149,54 +159,89 @@ fn main() {
     let listener = TcpListener::bind((options.host, options.port)).unwrap();
     listener.set_nonblocking(true).expect("Cannot set non-blocking");
 
+    println!("[-] UAT 978 MHz receiver listening on {}:{}", options.host, options.port);
+
     let mut sockets = vec![];
+    let mut frame_count = 0u64;
+    let mut message_count = 0u64;
 
     loop {
         // add more clients
-        if let Ok((s, _addr)) = listener.accept() {
+        if let Ok((s, addr)) = listener.accept() {
+            println!("[-] client connected from: {}", addr);
             sockets.push(s);
         }
 
         // try and read from sdr device
         match stream.read(&mut [&mut buf], 5_000_000) {
             Ok(len) => {
-                //utils::save_test_data(&buf[..len]);
-                // demodulate new data
+                // demodulate new UAT data
                 let buf = &buf[..len];
                 let outbuf = utils::to_mag(buf);
-                let resulting_data = demodulate2400(&outbuf).unwrap();
+                
+                // Demodulate UAT frames
+                let uat_frames = match demodulate978(&outbuf) {
+                    Ok(frames) => frames,
+                    Err(e) => {
+                        if options.verbose {
+                            println!("[!] demodulation error: {}", e);
+                        }
+                        continue;
+                    }
+                };
 
-                // send new data to connected clients
-                if !resulting_data.is_empty() {
-                    let resulting_data: Vec<String> = resulting_data
+                frame_count += uat_frames.len() as u64;
+
+                if !uat_frames.is_empty() {
+                    // Decode UAT frames into messages
+                    let messages = decode_uat_frames(&uat_frames);
+                    message_count += messages.len() as u64;
+
+                    // Format and send messages to connected clients
+                    let formatted_messages: Vec<String> = messages
                         .iter()
-                        .map(|a| {
-                            let msg = a.buffer();
-                            let h = hex::encode(msg);
-                            let a = format!("*{h};\n");
+                        .map(|msg| {
+                            let output = if options.verbose {
+                                msg.to_hex_string()
+                            } else {
+                                // For compatibility with existing tools, output hex format
+                                match &msg.payload {
+                                    libdump978_rs::uat_message::UatMessagePayload::Raw(data) => {
+                                        format!("*{};", hex::encode(data))
+                                    }
+                                    _ => msg.to_hex_string(),
+                                }
+                            };
+                            
                             if !options.quiet {
-                                println!("{}", &a[..a.len() - 1]);
+                                println!("{}", output);
                             }
-                            a
+                            format!("{}\n", output)
                         })
                         .collect();
 
-                    let mut remove_indexs = vec![];
-                    for (i, mut socket) in &mut sockets.iter().enumerate() {
-                        for msg in &resulting_data {
-                            // write, or add to remove list if ConnectionReset
+                    // Send to all connected clients
+                    let mut remove_indexes = vec![];
+                    for (i, socket) in sockets.iter_mut().enumerate() {
+                        for msg in &formatted_messages {
                             if let Err(e) = socket.write_all(msg.as_bytes()) {
                                 if e.kind() == std::io::ErrorKind::ConnectionReset {
-                                    remove_indexs.push(i);
+                                    println!("[-] client disconnected");
+                                    remove_indexes.push(i);
                                     break;
                                 }
                             }
                         }
                     }
 
-                    // remove
-                    for i in remove_indexs {
+                    // Remove disconnected clients
+                    for &i in remove_indexes.iter().rev() {
                         sockets.remove(i);
+                    }
+
+                    // Print statistics periodically
+                    if frame_count % 1000 == 0 && frame_count > 0 {
+                        println!("[-] processed {} frames, {} messages", frame_count, message_count);
                     }
                 }
             }

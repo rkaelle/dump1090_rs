@@ -299,12 +299,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
-name = "dump1090_rs"
+name = "dump978_rs"
 version = "0.8.1"
 dependencies = [
  "clap",
  "hex",
- "libdump1090_rs",
+ "libdump978_rs",
  "num-complex",
  "serde",
  "soapysdr",
@@ -449,12 +449,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8adc4bb1803a324070e64a98ae98f38934d91957a99cfb3a43dcbc01bc56439"
 
 [[package]]
-name = "libdump1090_rs"
+name = "libdump978_rs"
 version = "0.8.1"
 dependencies = [
  "assert_hex",
  "byteorder",
  "criterion",
+ "hex",
  "hexlit",
  "num-complex",
 ]
