@@ -1,0 +1,65 @@
+# SDR Configuration for dump978_rs
+# This file contains SDR-specific configuration for different devices
+
+# RTL-SDR configuration for 978 MHz UAT
+[[sdrs]]
+driver = "rtlsdr"
+channel = 0
+
+# Gains for RTL-SDR at 978 MHz
+# UAT signals are typically weaker than Mode S, so higher gains may be needed
+[[sdrs.gain]]
+key = "TUNER"
+value = 49.6
+
+[[sdrs.gain]]
+key = "GAIN"
+value = 40.0
+
+# Optional RTL-SDR specific settings
+# [[sdrs.setting]]
+# key = "biastee"
+# value = "true"
+
+# [[sdrs.setting]]
+# key = "direct_samp"
+# value = "0"
+
+# HackRF configuration for 978 MHz UAT
+[[sdrs]]
+driver = "hackrf"
+channel = 0
+
+[[sdrs.gain]]
+key = "LNA"
+value = 32.0
+
+[[sdrs.gain]]
+key = "VGA"
+value = 30.0
+
+# UHD/USRP configuration for 978 MHz UAT
+[[sdrs]]
+driver = "uhd"
+channel = 0
+
+[[sdrs.gain]]
+key = "PGA0"
+value = 30.0
+
+# BladeRF configuration for 978 MHz UAT
+[[sdrs]]
+driver = "bladerf"
+channel = 0
+
+[[sdrs.gain]]
+key = "RXVGA1"
+value = 30.0
+
+[[sdrs.gain]]
+key = "RXVGA2"
+value = 30.0
+
+# Antenna configuration (optional)
+# [sdrs.antenna]
+# name = "RX"

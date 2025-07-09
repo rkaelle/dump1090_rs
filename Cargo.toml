@@ -1,5 +1,5 @@
 [package]
-name = "libdump1090_rs"
+name = "libdump978_rs"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,6 +15,7 @@ rust-version = "1.74.0"
 byteorder = "1.5.0"
 num-complex = "0.4.4"
 hexlit = "0.5.0"
+hex = "0.4.0"
 
 [dev-dependencies]
 assert_hex = "0.4.1"
@@ -30,5 +31,5 @@ strip = true
 overflow-checks = true
 
 [workspace]
-members = ["dump1090_rs"]
-default-members = ["dump1090_rs"]
+members = ["dump978_rs"]
+default-members = ["dump978_rs"]
